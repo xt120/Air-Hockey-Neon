@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Air Hockey con Sombras Neón Fuertes</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/bmoren/p5.collide2D/p5.collide2d.min.js"></script>
+  <style>
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      background-color: black; 
+    }
+
+    #svgContainer {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+     width: 100%;
+      overflow: visible; 
+      position: relative;
+    }
+
+    #svgObject {
+      width: 50%;
+      height: auto;
+    }
+
+    #marcador {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      margin-left: 30px; 
+      transform: rotate(0deg);
+      color: white;
+      font-family: 'Arial', sans-serif;
+      font-size: 54px;
+      text-shadow: 0 0 2px rgb(153, 0, 255), 0 0 3px rgb(153, 0, 255), 0 0 5px rgb(153, 0, 255), 0 0 7px rgb(153, 0, 255), 0 0 9px rgb(153, 0, 255), 0 0 11px rgb(153, 0, 255), 0 0 13px rgb(153, 0, 255);
+    }
+
+    .puntuacion {
+      margin: 5px 0;
+      transform: rotate(90deg);
+      font-style: italic;
+    }
+
+    #iqual {
+      font-size: 70px;
+      font-weight: bold;
+    }
+
+    
+  </style>
+</head>
+<body>
+  <div id="svgContainer">
+    <object id="svgObject" type="image/svg+xml" data="airhockey3.svg"></object>
+    <div id="marcador">
+      <div class="puntuacion" id="puntosArriba">0</div>
+      <div class="puntuacion" id="iqual">=</div>
+      <div class="puntuacion" id="puntosAbajo">0</div>
+    </div>
+  </div>
+
+  <script>
+    let svgDoc;
+    let discoArriba, discoAbajo, discoMedio;
+
+    // Centro y radio (aprox) de cada disco
+    let xArriba, yArriba, rArriba, vxArriba = 0, vyArriba = 0;
+    let xAbajo,  yAbajo,  rAbajo,  vxAbajo  = 0, vyAbajo  = 0;
+    let xMedio,  yMedio,  rMedio;
+
+    // Posición original (centro) del disco Arriba (tomada del SVG):
+    let arriba0x, arriba0y;
+
+    // Posición original (centro) del disco Abajo (tomada del SVG)
+    let abajo0x, abajo0y;
+    let medio0x, medio0y;
+
+    let vxMedio = 0; // Velocidad en el eje x para el disco del medio
+    let vyMedio = 0; // Velocidad en el eje y para el disco del medio
+    let velocidadInicial = 2; // Velocidad base inicial del disco del medio
+
+    // Dimensiones del viewBox
+    let svgAncho, svgAlto;
+
+    let paredes = []
+
+    let zonasReinicio = []; // Array para almacenar las áreas de reinicio
+    let enReinicio = false; // Indica si el juego está en estado de reinicio
+    let parpadeoInterval; // Intervalo para el parpadeo
+    let parpadeoContador = 0; // Contador de parpadeos
+    let parpadeoMaximo = 6; // Número de parpadeos antes de reiniciar
+    let velocidadTemporal = { vxMedio: 0, vyMedio: 0 }; // Velocidad temporal para reiniciar
+
+    let puntosJugadorArriba = 0;
+    let puntosJugadorAbajo = 0;
+
+    const puntosArribaElem = document.getElementById("puntosArriba");
+    const puntosAbajoElem = document.getElementById("puntosAbajo");
+    const iqualElem = document.getElementById("iqual");
+
+    function actualizarMarcador() {
+      puntosArribaElem.textContent = puntosJugadorArriba;
+      puntosAbajoElem.textContent = puntosJugadorAbajo;
+
+      if (puntosJugadorArriba > puntosJugadorAbajo) {
+        iqualElem.textContent = ">";
+      } else if (puntosJugadorArriba < puntosJugadorAbajo) {
+        iqualElem.textContent = "<";
+      } else {
+        iqualElem.textContent = "=";
+      }
+    }
+
+    document.getElementById("svgObject").addEventListener("load", function () {
+      svgDoc = this.contentDocument;
+  
+      const svgElement = svgDoc.querySelector("svg");
+      if (svgElement) {
+        const viewBox = svgElement.getAttribute("viewBox") || "0 0 312.28937 476.79327";
+        const [x, y, width, height] = viewBox.split(" ").map(Number);
+  
+        const padding = 17; // Espacio extra para las sombras
+        const scale = 1; // Escala deseada (1.5 = 150%, 2 = 200%, etc.)
+  
+        const scaledWidth = width / scale;
+        const scaledHeight = height / scale;
+        const scaledX = x - padding;
+        const scaledY = y - padding;
+  
+        svgElement.setAttribute(
+          "viewBox",
+          `${scaledX} ${scaledY} ${scaledWidth + padding * 2} ${scaledHeight + padding * 2}`
+        );
+  
+        svgElement.style.overflow = "visible";
+
+        const [vx, vy, vw, vh] = viewBox.split(" ").map(Number);
+
+        svgAncho = vw;
+        svgAlto  = vh;
+
+        paredes = [
+          // 1) Top-left
+          { x: vx -30, y: vy-30, w: vw*0.41, h: vh *0.115, color:"red"},
+          // 2) Top-right
+          { x: vx + vw*0.685, y: vy-30, w: vw, h: 54, color:"red" },
+          // 3) Bottom-left
+          { x: vx - 30, y: vy + vh -30, w: vw * 0.41, h: vh * 0.115, color:"red" },
+          // 4) Bottom-right
+          { x: vx + vw*0.685, y: vy + vh - 29, w: vw, h: 54, color:"red" },
+          // 5) Middle-left
+          { x: vx - 21, y: vy - 30, w: 30, h: vh * 2, color:"yellow"},
+          // 6) Middle-right
+          { x: vx + vw - 9, y: vy - 30, w: 30, h: vh * 2, color:"yellow"}
+        ];
+        /*
+        const gElement = svgDoc.createElementNS("http://www.w3.org/2000/svg", "g");
+        gElement.setAttribute("id", "paredes");
+        paredes.forEach((pared) => {
+          const rect = svgDoc.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", pared.x);
+          rect.setAttribute("y", pared.y);
+          rect.setAttribute("width", pared.w);
+          rect.setAttribute("height", pared.h);
+          rect.setAttribute("fill", pared.color);
+          rect.setAttribute("opacity", "0.5"); // Hacer las paredes semi-transparentes
+          gElement.appendChild(rect);
+        });
+        svgElement.appendChild(gElement);*/
+
+        zonasReinicio = [
+          { x: vw * 0.32, y: vy - 25, w: vw * 0.36, h: vh * 0.05, color: "green" }, // Rectángulo superior
+          { x: vw * 0.32, y: vy + vh  , w: vw * 0.36, h: vh * 0.05, color: "green" } // Rectángulo inferior
+        ];
+
+        /*// Agregar los rectángulos al SVG para visualizarlos
+        const gReinicio = svgDoc.createElementNS("http://www.w3.org/2000/svg", "g");
+        gReinicio.setAttribute("id", "zonasReinicio");
+        zonasReinicio.forEach((zona) => {
+          const rect = svgDoc.createElementNS("http://www.w3.org/2000/svg", "rect");
+          rect.setAttribute("x", zona.x);
+          rect.setAttribute("y", zona.y);
+          rect.setAttribute("width", zona.w);
+          rect.setAttribute("height", zona.h);
+          rect.setAttribute("fill", zona.color);
+          rect.setAttribute("opacity", "0.5"); // Semi-transparente
+          gReinicio.appendChild(rect);
+        });
+        svgElement.appendChild(gReinicio);*/
+      };
+
+
+      const inkscapeNS = "http://www.inkscape.org/namespaces/inkscape";
+  
+      const elementosConLabel = svgDoc.querySelectorAll("*");
+      const elementosFiltrados = Array.from(elementosConLabel).filter((el) =>
+        el.hasAttributeNS(inkscapeNS, "label")
+      );
+  
+      if (elementosFiltrados.length === 0) {
+        console.warn("No se encontraron elementos con 'inkscape:label'.");
+      } else {
+        console.log(`Se encontraron ${elementosFiltrados.length} elementos con 'inkscape:label':`);
+        elementosFiltrados.forEach((elemento) => {
+          const label = elemento.getAttributeNS(inkscapeNS, "label");
+          console.log(`Etiqueta: ${label}, ID: ${elemento.id}`);
+          
+          switch (label) {
+            case "linea":
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "2";
+              break;
+            case "borde1":
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "10";
+              elemento.style.filter = "drop-shadow(0 0 1px red) drop-shadow(0 0 2px red) drop-shadow(0 0 3px red) drop-shadow(0 0 5px red) drop-shadow(0 0 7px red)";
+              break;
+            case "borde2":
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "10";
+              elemento.style.filter = "drop-shadow(0 0 1px orange) drop-shadow(0 0 2px orange) drop-shadow(0 0 3px orange) drop-shadow(0 0 5px orange) drop-shadow(0 0 7px orange)";
+              break;
+            case "borde3":
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "10";
+              elemento.style.filter = "drop-shadow(0 0 1px yellow) drop-shadow(0 0 2px yellow) drop-shadow(0 0 3px yellow) drop-shadow(0 0 5px yellow) drop-shadow(0 0 7px yellow)";
+              break;
+            case "borde4":
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "10";
+              elemento.style.filter = "drop-shadow(0 0 1px limegreen) drop-shadow(0 0 2px limegreen) drop-shadow(0 0 3px limegreen) drop-shadow(0 0 5px limegreen) drop-shadow(0 0 7px limegreen)";
+              break;
+            case "borde5":
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "10";
+              elemento.style.filter = "drop-shadow(0 0 1px blue) drop-shadow(0 0 2px blue) drop-shadow(0 0 3px blue) drop-shadow(0 0 5px blue) drop-shadow(0 0 7px blue)";
+              break;
+            case "borde6":
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "10";
+              elemento.style.filter = "drop-shadow(0 0 1px magenta) drop-shadow(0 0 2px magenta) drop-shadow(0 0 3px magenta) drop-shadow(0 0 5px magenta) drop-shadow(0 0 7px magenta)";
+              break;
+            case "discoarriba":
+              elemento.style.fill = "magenta";
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "0.7";
+              elemento.style.filter = "drop-shadow(0 0 1px magenta) drop-shadow(0 0 2px magenta) drop-shadow(0 0 3px magenta)";
+              break;
+            case "discomedio":
+              elemento.style.fill = "yellow";
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "0.7";
+              elemento.style.filter = "drop-shadow(0 0 1px yellow) drop-shadow(0 0 5px yellow) drop-shadow(0 0 10px yellow)";
+              break;
+            case "discoabajo":
+              elemento.style.fill = "limegreen";
+              elemento.style.stroke = "white";
+              elemento.style.strokeWidth = "0.7";
+              elemento.style.filter = "drop-shadow(0 0 1px limegreen) drop-shadow(0 0 5px limegreen) drop-shadow(0 0 10px limegreen)";
+              break;
+            default:
+              console.warn(`Etiqueta no reconocida: ${label}`);
+          }
+        });
+      }
+      
+      discoArriba = Array.from(elementosConLabel).find((el) => el.getAttributeNS(inkscapeNS, "label") === "discoarriba");
+      discoAbajo  = Array.from(elementosConLabel).find((el) => el.getAttributeNS(inkscapeNS, "label") === "discoabajo");
+      discoMedio  = Array.from(elementosConLabel).find((el) => el.getAttributeNS(inkscapeNS, "label") === "discomedio");
+
+
+      // =============== Calcular BBox y centro + radio de cada disco =============
+      // --- discoArriba ---
+      const bboxA = discoArriba.getBBox();
+      arriba0x = bboxA.x + bboxA.width / 2;
+      arriba0y = bboxA.y + bboxA.height / 2;
+      xArriba  = arriba0x;
+      yArriba  = arriba0y;
+      rArriba = Math.min(bboxA.width, bboxA.height) / 2;
+
+      // --- discoAbajo ---
+      const bboxB = discoAbajo.getBBox();
+      abajo0x = bboxB.x + bboxB.width / 2;
+      abajo0y = bboxB.y + bboxB.height / 2;
+      xAbajo  = abajo0x;
+      yAbajo  = abajo0y;
+      rAbajo = Math.min(bboxB.width, bboxB.height) / 2;
+
+      // --- discoMedio (opcional) ---
+      if (discoMedio) {
+        const bboxM = discoMedio.getBBox();
+        medio0x = bboxM.x + bboxM.width / 2;
+        medio0y = bboxM.y + bboxM.height / 2;
+        xMedio  = medio0x;
+        yMedio  = medio0y;
+        rMedio = Math.min(bboxM.width, bboxM.height) / 2;
+      }
+
+      // Calcula la dirección inicial aleatoria del disco del medio
+      const anguloInicial = Math.random() * 2 * Math.PI; // Ángulo aleatorio entre 0 y 2π
+      vxMedio = Math.cos(anguloInicial) * velocidadInicial; // Componente X
+      vyMedio = Math.sin(anguloInicial) * velocidadInicial; // Componente Y
+
+      new p5(sketch);
+    });
+
+    const sketch = (p) => {
+      p.setup = () => {
+        // Canvas muy pequeño para permitir el bucle draw
+        p.createCanvas(10, 10);
+        console.log("p5.collide2D version?", window.collideDebug ? "ok" : "not found");
+      };
+
+      p.draw = () => {
+        if (enReinicio) {
+          return; // Si estamos en reinicio, detener toda lógica de movimiento
+        }
+
+        //++++++ Movimiento continuo del DISCO MEDIO ++++++++
+        if (discoMedio) {
+          xMedio += vxMedio;
+          yMedio += vyMedio;
+
+          // Colisión del disco medio con las paredes
+          paredes.forEach((pared, index) => {
+            // Lado superior
+            const colisionSuperior = p.collideLineCircle(
+              pared.x, pared.y, pared.x + pared.w, pared.y, // Línea superior de la pared
+              xMedio, yMedio, 2 * rMedio                   // Disco medio
+            );
+            if (colisionSuperior) {
+              const normal = p.createVector(0, -1); // Normal hacia abajo
+              const velocidad = p.createVector(vxMedio, vyMedio);
+              const reflejo = velocidad.sub(normal.mult(2 * velocidad.dot(normal)));
+              vxMedio = reflejo.x;
+              vyMedio = reflejo.y;
+              yMedio -= 2;    // Pequeño desplazamiento para evitar colisión repetida
+            }
+
+            // Lado inferior
+            const colisionInferior = p.collideLineCircle(
+              pared.x, pared.y + pared.h, pared.x + pared.w, pared.y + pared.h, 
+              xMedio, yMedio, 2 * rMedio                                       
+            );
+            if (colisionInferior) {
+              const normal = p.createVector(0, 1); 
+              const velocidad = p.createVector(vxMedio, vyMedio);
+              const reflejo = velocidad.sub(normal.mult(2 * velocidad.dot(normal)));
+              vxMedio = reflejo.x;
+              vyMedio = reflejo.y;
+              yMedio += 2;
+            }
+
+            // Lado izquierdo
+            const colisionIzquierda = p.collideLineCircle(
+              pared.x, pared.y, pared.x, pared.y + pared.h,
+              xMedio, yMedio, 2 * rMedio                  
+            );
+            if (colisionIzquierda) {
+              console.log(`Disco Medio chocó con la parte izquierda de la pared ${index + 1}`);
+              const normal = p.createVector(-1, 0);
+              const velocidad = p.createVector(vxMedio, vyMedio);
+              const reflejo = velocidad.sub(normal.mult(2 * velocidad.dot(normal)));
+              vxMedio = reflejo.x;
+              vyMedio = reflejo.y;
+              xMedio -= 2;
+            }
+
+            // Lado derecho
+            const colisionDerecha = p.collideLineCircle(
+              pared.x + pared.w, pared.y, pared.x + pared.w, pared.y + pared.h, // Línea derecha de la pared
+              xMedio, yMedio, 2 * rMedio                                       // Disco medio
+            );
+            if (colisionDerecha) {
+              console.log(`Disco Medio chocó con la parte derecha de la pared ${index + 1}`);
+              const normal = p.createVector(1, 0); // Normal hacia la izquierda
+              const velocidad = p.createVector(vxMedio, vyMedio);
+              const reflejo = velocidad.sub(normal.mult(2 * velocidad.dot(normal)));
+              vxMedio = reflejo.x;
+              vyMedio = reflejo.y;
+              xMedio += 2;
+            }
+          });
+
+          // Colisión con los discos de arriba y abajo
+          const discos = [
+            { x: xArriba, y: yArriba, r: rArriba * 1.5, vx: vxArriba, vy: vyArriba },
+            { x: xAbajo, y: yAbajo, r: rAbajo * 1.5, vx: vxAbajo, vy: vyAbajo }
+          ];
+          discos.forEach((disco) => {
+            const colision = p.collideCircleCircle(
+              xMedio, yMedio, 2 * rMedio,
+              disco.x, disco.y, 2 * disco.r
+            );
+            if (colision) {
+              console.log(`Disco Medio fue empujado por otro disco`);
+              
+              // Empujar el disco medio en la dirección del impacto
+              const impactoX = xMedio - disco.x;
+              const impactoY = yMedio - disco.y;
+              const magnitudImpacto = Math.sqrt(impactoX ** 2 + impactoY ** 2);
+
+              const factorEmpuje = 1 + Math.sqrt(disco.vx ** 2 + disco.vy ** 2) * 0.5; // Más empuje si el disco está en movimiento
+              vxMedio += (impactoX / magnitudImpacto) * factorEmpuje;
+              vyMedio += (impactoY / magnitudImpacto) * factorEmpuje;
+            }
+          });
+
+          // Colisión con las zonas de reinicio
+          zonasReinicio.forEach((zona, index) => {
+            const colisionReinicio = p.collideRectCircle(
+              zona.x, zona.y, zona.w, zona.h, // Coordenadas del rectángulo
+              xMedio, yMedio, 2 * rMedio     // Coordenadas del disco
+            );
+            if (colisionReinicio) {
+              if (index === 0) {
+                puntosJugadorAbajo++; // Puntos para el jugador de abajo
+              } else {
+                puntosJugadorArriba++; // Puntos para el jugador de arriba
+              }
+              actualizarMarcador(); // Actualizar marcador después de sumar puntos
+              iniciarReinicio(); // Iniciar proceso de reinicio
+            }
+          });
+
+        }
+       
+        // Movimientos para discoArriba (flechas)
+        if (p.keyIsDown(p.LEFT_ARROW)) xArriba -= 2;
+        if (p.keyIsDown(p.RIGHT_ARROW)) xArriba += 2;
+        if (p.keyIsDown(p.UP_ARROW))    yArriba -= 2;
+        if (p.keyIsDown(p.DOWN_ARROW))  yArriba += 2;
+
+        // Movimientos para discoAbajo (WASD)
+        if (p.keyIsDown(65))  xAbajo -= 2; // A
+        if (p.keyIsDown(68))  xAbajo += 2; // D
+        if (p.keyIsDown(87))  yAbajo -= 2; // W
+        if (p.keyIsDown(83))  yAbajo += 2; // S
+
+        // Frenar los discos arriba y abajo si no se presionan teclas
+        if (!p.keyIsDown(p.LEFT_ARROW) && !p.keyIsDown(p.RIGHT_ARROW) &&
+            !p.keyIsDown(p.UP_ARROW) && !p.keyIsDown(p.DOWN_ARROW)) {
+          vxArriba = 0;
+          vyArriba = 0;
+        }
+
+        if (!p.keyIsDown(65) && !p.keyIsDown(68) &&
+            !p.keyIsDown(87) && !p.keyIsDown(83)) {
+          vxAbajo = 0;
+          vyAbajo = 0;
+        }
+        // ---------------------------------------------
+        // 3) Colisión entre el disco de arriba ya bajo
+
+        const colision = p.collideCircleCircle(
+          xArriba, yArriba, 2.1*rArriba,
+          xAbajo,  yAbajo,  2.1*rAbajo
+        );
+
+
+        // 4) Colisión discoArriba/Abajo entre sí
+        if (colision) {
+          console.log("Arriba chocó con Abajo");
+          // Rebotamos "simple"
+          xArriba += (xArriba < xAbajo ? -5 : 5);
+          yArriba += (yArriba < yAbajo ? -5 : 5);
+        }
+
+        // ---------------------------------------------
+        // 5) Colisión con bordes (aprox bounding box)
+        paredes.forEach((pared, index) => {
+          // Top-left, bottom-left, top-right, bottom-right: tratamos cada lado como una pared
+          if ([0, 1, 2, 3].includes(index)) {
+            // Lado superior
+            const colisionSuperiorArriba = p.collideLineCircle(
+              pared.x, pared.y, pared.x + pared.w, pared.y, // Línea superior de la pared
+              xArriba, yArriba, 2 * rArriba                 // Disco Arriba
+            );
+            if (colisionSuperiorArriba) {
+              yArriba -= 2;
+            }
+
+            const colisionSuperiorAbajo = p.collideLineCircle(
+              pared.x, pared.y, pared.x + pared.w, pared.y,
+              xAbajo, yAbajo, 2 * rAbajo                   
+            );
+            if (colisionSuperiorAbajo) {
+              yAbajo -= 2; 
+            }
+
+            // Lado inferior
+            const colisionInferiorArriba = p.collideLineCircle(
+              pared.x, pared.y + pared.h, pared.x + pared.w, pared.y + pared.h, // Línea inferior de la pared
+              xArriba, yArriba, 2 * rArriba                                    // Disco Arriba
+            );
+            if (colisionInferiorArriba) {
+              yArriba += 2; 
+            }
+
+            const colisionInferiorAbajo = p.collideLineCircle(
+              pared.x, pared.y + pared.h, pared.x + pared.w, pared.y + pared.h, // Línea inferior de la pared
+              xAbajo, yAbajo, 2 * rAbajo                                       // Disco Abajo
+            );
+            if (colisionInferiorAbajo) {
+              yAbajo += 2; 
+            }
+
+            // Lado izquierdo
+            const colisionIzquierdaArriba = p.collideLineCircle(
+              pared.x, pared.y, pared.x, pared.y + pared.h, // Línea izquierda de la pared
+              xArriba, yArriba, 2 * rArriba                // Disco Arriba
+            );
+            if (colisionIzquierdaArriba) {
+              xArriba -= 2; 
+            }
+
+            const colisionIzquierdaAbajo = p.collideLineCircle(
+              pared.x, pared.y, pared.x, pared.y + pared.h, // Línea izquierda de la pared
+              xAbajo, yAbajo, 2 * rAbajo                   // Disco Abajo
+            );
+            if (colisionIzquierdaAbajo) {
+              xAbajo -= 2; 
+            }
+
+            // Lado derecho
+            const colisionDerechaArriba = p.collideLineCircle(
+              pared.x + pared.w, pared.y, pared.x + pared.w, pared.y + pared.h, // Línea derecha de la pared
+              xArriba, yArriba, 2 * rArriba                                    // Disco Arriba
+            );
+            if (colisionDerechaArriba) {
+              xArriba += 2; 
+            }
+
+            const colisionDerechaAbajo = p.collideLineCircle(
+              pared.x + pared.w, pared.y, pared.x + pared.w, pared.y + pared.h, // Línea derecha de la pared
+              xAbajo, yAbajo, 2 * rAbajo                                       // Disco Abajo
+            );
+            if (colisionDerechaAbajo) {
+              xAbajo += 2; 
+            }
+          } else {
+              // Para las paredes 5 (Middle-left) y 6 (Middle-right), se tratan como rectángulos completos
+              const colisionArriba = p.collideRectCircle(
+              pared.x, pared.y, pared.w, pared.h, // Coordenadas y tamaño de la pared
+              xArriba, yArriba, 2 * rArriba       // Coordenadas y diámetro del disco
+            );
+            if (colisionArriba) {
+              // Rebote simple para el disco de arriba
+              if (index === 0 || index === 1) {
+                yArriba += 2; 
+              } else if (index === 2 || index === 3) {
+                yArriba -= 2; 
+              } else if (index === 4) {
+                xArriba += 2; 
+              } else if (index === 5) {
+                xArriba -= 2; 
+              }
+            }
+
+            // Colisión DiscoAbajo vs Pared
+            const colisionAbajo = p.collideRectCircle(
+              pared.x, pared.y, pared.w, pared.h, // Coordenadas y tamaño de la pared
+              xAbajo, yAbajo, 2 * rAbajo          // Coordenadas y diámetro del disco
+            );
+            if (colisionAbajo) {
+              // Rebote simple para el disco de abajo
+              if (index === 0 || index === 1) {
+                yAbajo += 2; 
+              } else if (index === 2 || index === 3) {
+                yAbajo -= 2; 
+              } else if (index === 4) {
+                xAbajo += 2; 
+              } else if (index === 5) {
+                xAbajo -= 2; 
+              }
+            }
+          }
+        });
+
+        // ---------------------------------------------
+        // 6) Actualizar transform en SVG
+        if (discoArriba) {
+          const dxA = xArriba - arriba0x;
+          const dyA = yArriba - arriba0y;
+          discoArriba.setAttribute("transform", `translate(${dxA}, ${dyA})`);
+        }
+        if (discoAbajo) {
+          const dxB = xAbajo - abajo0x;
+          const dyB = yAbajo - abajo0y;
+          discoAbajo.setAttribute("transform", `translate(${dxB}, ${dyB})`);
+        }
+        if (discoMedio) {
+          // Si no quieres que se mueva, omite esto;
+          // si quisieras moverlo, calculas dx y dy igual que los otros.
+          const dxM = xMedio - medio0x;
+          const dyM = yMedio - medio0y;
+          discoMedio.setAttribute("transform", `translate(${dxM}, ${dyM})`);
+        }
+      };
+    };
+
+
+      function iniciarReinicio() {
+    if (enReinicio) return; // Evitar múltiples llamadas al reinicio
+    enReinicio = true;
+
+    // Detener todos los movimientos
+    velocidadTemporal = { vxMedio, vyMedio, vxArriba, vyArriba, vxAbajo, vyAbajo };
+    vxMedio = vyMedio = vxArriba = vyArriba = vxAbajo = vyAbajo = 0;
+
+    // Iniciar parpadeo
+    parpadeoContador = 0;
+    parpadeoInterval = setInterval(() => {
+      const discos = [discoArriba, discoAbajo, discoMedio];
+      discos.forEach((disco) => {
+        if (disco) {
+          const currentOpacity = disco.style.opacity || "1";
+          disco.style.opacity = currentOpacity === "1" ? "0" : "1";
+        }
+      });
+
+      parpadeoContador++;
+      if (parpadeoContador >= parpadeoMaximo) {
+        clearInterval(parpadeoInterval); // Detener el parpadeo
+        reiniciarDiscos(); // Reiniciar los discos a sus posiciones iniciales
+      }
+    }, 300); // Cambiar visibilidad cada 300 ms
+  }
+
+  function reiniciarDiscos() {
+    // Restaurar todos los discos a visibles
+    const discos = [discoArriba, discoAbajo, discoMedio];
+    discos.forEach((disco) => {
+      if (disco) {
+        disco.style.opacity = "1";
+      }
+    });
+
+    // Reiniciar posición del disco medio
+    xMedio = medio0x;
+    yMedio = medio0y;
+
+    // Reiniciar posiciones de los discos de arriba y abajo
+    xArriba = arriba0x;
+    yArriba = arriba0y;
+    xAbajo = abajo0x;
+    yAbajo = abajo0y;
+
+    // Actualizar transformaciones en el SVG para los discos
+    if (discoArriba) {
+      discoArriba.setAttribute("transform", `translate(0, 0)`);
+    }
+    if (discoAbajo) {
+      discoAbajo.setAttribute("transform", `translate(0, 0)`);
+    }
+    if (discoMedio) {
+      discoMedio.setAttribute("transform", `translate(0, 0)`);
+    }
+
+    // Generar nueva dirección aleatoria para el disco medio
+    const anguloReinicio = Math.random() * 2 * Math.PI;
+    vxMedio = Math.cos(anguloReinicio) * velocidadInicial;
+    vyMedio = Math.sin(anguloReinicio) * velocidadInicial;
+
+    enReinicio = false;
+  }
+  </script>
+</body>
+</html>
