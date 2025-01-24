@@ -54,7 +54,20 @@
       font-weight: bold;
     }
 
-    
+    footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      padding: 10px;
+      z-index: 2;
+    }
+
+    footer a {
+      text-decoration: none; 
+      color: #686666;
+    }    
   </style>
 </head>
 <body>
@@ -66,6 +79,10 @@
       <div class="puntuacion" id="puntosAbajo">0</div>
     </div>
   </div>
+
+  <footer>
+    <p><a href="https://www.instagram.com/codeloise/">@codeloise </a></p>
+  </footer>
 
   <script>
     let svgDoc;
