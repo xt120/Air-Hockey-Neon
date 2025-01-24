@@ -1,4 +1,5 @@
-#Air Hockey Neon 
+# Air Hockey Neon 
+
 Es una versión digital del clásico juego de Air Hockey, diseñada con un estilo visual llamativo inspirado en luces de neón. Incluye características como:
 - Controles interactivos: Mueve los discos con las flechas del teclado o las teclas WASD.
 - Marcador dinámico: Actualiza automáticamente las puntuaciones de los jugadores y muestra quién va ganando.
